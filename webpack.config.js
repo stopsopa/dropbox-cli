@@ -16,7 +16,7 @@ module.exports = {
         __dirname: false, // no polyfill
     },
     entry: {
-        index: path.resolve(__dirname, 'source.js')
+        index: path.resolve(__dirname, 'dropbox.js')
     },
     output: {
         path: __dirname,
