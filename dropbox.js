@@ -50,6 +50,7 @@ node ${file} list "/path"
         node ${file} list "/folder/another/folder"
         node ${file} list "/another folder"
         node ${file} list "/another folder/" - with slash at the end - doesn't matter as long as it's path to folder not file
+        node dropbox.js list "/apps/phaseii-api" "#cart.*mM_#i" -- filter parameter as a regex
 
 node ${file} download \${path_to_file_to_download} [\${where_to_save}]
     
@@ -152,7 +153,45 @@ switch(process.argv[2]) {
         init();
         dropbox
             .filesListFolder({path: process.argv[3] || ''})
-            .then(data => console.log(JSON.stringify(data, null, 4)), error => {
+            .then(data => {
+
+                if ( typeof process.argv[4] === 'string' ) {
+
+                    try {
+
+                        var reg = ((function (k) {
+
+                            if (k.length === 0) {
+
+                                throw new Error(`strng is empty`);
+                            }
+
+                            var i = k.lastIndexOf(k[0]);
+
+                            var t = k.indexOf(k[0]);
+
+                            if (i === t) {
+
+                                throw new Error(`Invalid regex syntax`);
+                            }
+
+                            return new RegExp(k.substring(1, i), k.substring(i + 1));
+
+                        })(process.argv[4]));
+
+                        data.entries = data.entries.filter(a => {
+
+                            return reg.test(a.path_lower);
+                        });
+                    }
+                    catch (e) {
+
+                        throw new Error(`reg error: ${e}`);
+                    }
+                }
+
+                console.log(JSON.stringify(data, null, 4))
+            }, error => {
                 console.error(error);
                 process.exit(1);
             })
