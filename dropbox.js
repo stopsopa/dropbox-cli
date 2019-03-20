@@ -1,4 +1,7 @@
-
+/**
+ * Implement pagination, default limit is 1000
+ *      https://www.dropbox.com/developers/documentation/http/documentation#file_requests-list
+ */
 const path      = require('path');
 
 const fs        = require('fs');
