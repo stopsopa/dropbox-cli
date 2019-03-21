@@ -8,24 +8,36 @@ const fs        = require('fs');
 
 const https     = require('https');
 
+const log       = require('inspc');
+
+const debounce  = require('lodash/debounce');
+
 const fetch     = require('isomorphic-fetch');
 
 const Dropbox   = require('dropbox').Dropbox;
 
 const mkdirp    = require('mkdirp');
 
+const progress  = require('progress-stream');
+
+const pb        = require('pretty-bytes');
+
+const pt        = require('pretty-time');
+
 const file      = path.basename(__filename);
 
-const log       = console.log;
-
 const trim      = require('nlab/trim');
+
+function now () {
+    return (new Date()).toISOString().substring(0, 19).replace('T', ' ');
+}
 /**
  * export DROPBOX_NODE_SECRET="access ... token" && node test.js list
  */
 
 if (process.argv.length < 3) {
 
-    log(`
+    console.log(`
         
 It's necessary to provide dropbox accessToken, there are two ways of providing it:
 
@@ -74,7 +86,7 @@ if ( typeof accessToken !== 'string' ) {
     }
     catch (e) {
 
-        log(`Can't extract accessToken from ./dropbox_node_secret.js, see \n\n    node ${file}\n\nfor help\n\noriginal exception: ` + (e + ''))
+        console.log(`Can't extract accessToken from ./dropbox_node_secret.js, see \n\n    node ${file}\n\nfor help\n\noriginal exception: ` + (e + ''))
 
         process.exit(1);
     }
@@ -82,7 +94,7 @@ if ( typeof accessToken !== 'string' ) {
 
 if ( typeof accessToken !== 'string' ) {
 
-    log(`Can't extract accessToken, see \n\n    node ${file}\n\nfor help`)
+    console.log(`Can't extract accessToken, see \n\n    node ${file}\n\nfor help`)
 
     process.exit(1);
 }
@@ -116,7 +128,7 @@ function pregQuote(str) {
 
 // from: https://github.com/dropbox/dropbox-sdk-js/issues/139#issuecomment-308444157
 // Where: `path` is the path of your file in your Dropbox
-const downloadLargeFile = (source, target) => {
+const downloadLargeFile = (source, target, size) => {
     return new Promise((resolve, reject) => {
         dropbox.filesGetTemporaryLink({
             path: source
@@ -136,19 +148,61 @@ const downloadLargeFile = (source, target) => {
             }
 
             const writePath = path.resolve(__dirname, target);
-            const req = https.get(result.link, res => {
-                res.pipe(fs.createWriteStream(writePath));
+
+            var str = progress({
+                length: size,
+                time: 100 /* ms */
             });
 
-            req.on('close', resolve);
+            let stop = false;
+
+            str.on('progress', function(p) {
+
+                if (stop) {
+
+                    return;
+                }
+
+                process.stdout.write((`\rsize: ${pb(p.length)}, progress: ${pb(p.transferred)}, left: ${pb(p.remaining)}, ETA: ${p.eta} sec`).padEnd(process.stdout.columns, ' '));
+
+                /*
+                {
+                    percentage: 9.05,
+                    transferred: 949624,
+                    length: 10485760,
+                    remaining: 9536136,
+                    eta: 42,
+                    runtime: 3,
+                    delta: 295396,
+                    speed: 949624
+                }
+                */
+            });
+
+            const req = https.get(result.link, res => {
+                res
+                    .pipe(str)
+                    .pipe(fs.createWriteStream(writePath))
+                ;
+            });
+
+            req.on('close', () => {
+                stop = true;
+                resolve()
+            });
             req.on('error', reject);
 
         }).catch(reject);
     });
 }
 
-
 switch(process.argv[2]) {
+    case 'meta':
+        init();
+        dropbox.filesGetMetadata({path: process.argv[3] || ''})
+            .then(data => console.log(JSON.stringify(data, null, 4)))
+        ;
+        break;
     case 'list':
         init();
         dropbox
@@ -200,9 +254,11 @@ switch(process.argv[2]) {
     case 'download':
     case 'down':
 
+        const start = now();
+
         if ( typeof process.argv[3] !== 'string' ) {
 
-            log(`\nspecify file path to download, see more in \n\n    node ${file}\n`);
+            console.log(`\nspecify file path to download, see more in \n\n    node ${file}\n`);
 
             process.exit(0);
         }
@@ -210,15 +266,49 @@ switch(process.argv[2]) {
         init();
 
         const target = process.argv[4] || trim(process.argv[3], './' , 'l');
+
+        dropbox.filesGetMetadata({path: process.argv[3]})
+            .then(data => {
+                downloadLargeFile(process.argv[3], target, data.size).then(() => {
+                    // file was saved as 'large-file.zip'
+                    console.log(`\nfile '${process.argv[3]}' successfully downloaded to '${target}'`);
+
+                    console.log(`start : ${start}`);
+
+                    console.log(`en    : ${now()}`);
+
+                }, p => {
+                    console.log(p);
+                }).catch(err => {
+                    // handle err
+                    console.log('error', err);
+                });
+            })
+            .catch(e => log.dump({
+                error: e
+            }))
+        ;
 // Usage
-        downloadLargeFile(process.argv[3], target).then(() => {
-            // file was saved as 'large-file.zip'
-            log(`file '${process.argv[3]}' successfully downloaded to '${target}'`)
-        }).catch(err => {
-            // handle err
-            log('error', err);
-        });
 
         break;
 
+}
+
+// https://github.com/uxitten/polyfill/blob/master/string.polyfill.js
+// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/padEnd
+if (!String.prototype.padEnd) {
+    String.prototype.padEnd = function padEnd(targetLength,padString) {
+        targetLength = targetLength>>0; //floor if number or convert non-number to 0;
+        padString = String((typeof padString !== 'undefined' ? padString : ' '));
+        if (this.length > targetLength) {
+            return String(this);
+        }
+        else {
+            targetLength = targetLength-this.length;
+            if (targetLength > padString.length) {
+                padString += padString.repeat(targetLength/padString.length); //append to original to ensure we are longer than needed
+            }
+            return String(this) + padString.slice(0,targetLength);
+        }
+    };
 }

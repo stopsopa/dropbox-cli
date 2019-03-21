@@ -2,8 +2,12 @@
   "dependencies": {
     "dropbox": "^4.0.16",
     "isomorphic-fetch": "^2.2.1",
+    "lodash": "^4.17.11",
     "mkdirp": "^0.5.1",
-    "nlab": "^0.0.47"
+    "nlab": "^0.0.47",
+    "pretty-bytes": "^5.1.0",
+    "pretty-time": "^1.1.0",
+    "progress-stream": "^2.0.0"
   },
   "scripts": {
     "build": "node node_modules/.bin/webpack",
