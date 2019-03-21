@@ -154,16 +154,11 @@ const downloadLargeFile = (source, target, size) => {
                 time: 100 /* ms */
             });
 
-            let stop = false;
+            const debounceResolve = debounce(resolve, 150);
 
             str.on('progress', function(p) {
 
-                if (stop) {
-
-                    return;
-                }
-
-                process.stdout.write((`\rsize: ${pb(p.length)}, progress: ${pb(p.transferred)}, left: ${pb(p.remaining)}, ETA: ${p.eta} sec`).padEnd(process.stdout.columns, ' '));
+                process.stdout.write((`\rsize: ${pb(p.length)}, percent: ${(p.percentage).toFixed(1).padStart(5, ' ')}%, ETA: ${p.eta} sec, progress: ${pb(p.transferred)}, left: ${pb(p.remaining)}`).padEnd(process.stdout.columns, ' '));
 
                 /*
                 {
@@ -177,6 +172,7 @@ const downloadLargeFile = (source, target, size) => {
                     speed: 949624
                 }
                 */
+                debounceResolve()
             });
 
             const req = https.get(result.link, res => {
@@ -186,10 +182,7 @@ const downloadLargeFile = (source, target, size) => {
                 ;
             });
 
-            req.on('close', () => {
-                stop = true;
-                resolve()
-            });
+            req.on('close', debounceResolve);
             req.on('error', reject);
 
         }).catch(reject);
@@ -275,17 +268,17 @@ switch(process.argv[2]) {
 
                     console.log(`start : ${start}`);
 
-                    console.log(`en    : ${now()}`);
+                    console.log(`end   : ${now()}`);
 
                 }, p => {
                     console.log(p);
                 }).catch(err => {
                     // handle err
-                    console.log('error', err);
+                    log.dump('downloadLargeFile_error', err);
                 });
             })
             .catch(e => log.dump({
-                error: e
+                'dropbox.filesGetMetadata_error': e
             }))
         ;
 // Usage
@@ -309,6 +302,24 @@ if (!String.prototype.padEnd) {
                 padString += padString.repeat(targetLength/padString.length); //append to original to ensure we are longer than needed
             }
             return String(this) + padString.slice(0,targetLength);
+        }
+    };
+}
+
+// https://github.com/uxitten/polyfill/blob/master/string.polyfill.js
+// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/padStart
+if (!String.prototype.padStart) {
+    String.prototype.padStart = function padStart(targetLength, padString) {
+        targetLength = targetLength >> 0; //truncate if number, or convert non-number to 0;
+        padString = String(typeof padString !== 'undefined' ? padString : ' ');
+        if (this.length >= targetLength) {
+            return String(this);
+        } else {
+            targetLength = targetLength - this.length;
+            if (targetLength > padString.length) {
+                padString += padString.repeat(targetLength / padString.length); //append to original to ensure we are longer than needed
+            }
+            return padString.slice(0, targetLength) + String(this);
         }
     };
 }
