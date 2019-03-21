@@ -172,7 +172,10 @@ const downloadLargeFile = (source, target, size) => {
                     speed: 949624
                 }
                 */
-                debounceResolve()
+                if (p.percentage == 100) {
+
+                    debounceResolve()
+                }
             });
 
             const req = https.get(result.link, res => {
